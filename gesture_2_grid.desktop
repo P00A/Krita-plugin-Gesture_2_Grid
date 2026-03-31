@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+
+X-KDE-Library=gesture_2_grid
+X-Python-2-Compatible=false
+
+Name=Gesture to Grid (G2G)
+Comment=Convert hand-drawn lines into perspective grids
+
+Author=P00A
+Email=orignalunknown07r@email.com
+Version=1.0
+
+
+Category=Tools
