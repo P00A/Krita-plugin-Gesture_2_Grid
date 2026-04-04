@@ -1,9 +1,13 @@
 from krita import DockWidget
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel, QSlider, QComboBox
 import os
+from PyQt5.QtCore import Qt
 import subprocess
 import json
 from PyQt5.QtGui import QPainterPath
+
+from PyQt5.QtGui import QPainterPath
+
 
 
 class GestureToGrid(DockWidget):
@@ -62,119 +66,120 @@ class GestureToGrid(DockWidget):
         self.setWidget(main_widget)
 
     
-def run_g2g(self):
-    doc = Krita.instance().activeDocument()
-    node = doc.activeNode()
+    def run_g2g(self):
+        doc = Krita.instance().activeDocument()
+        node = doc.activeNode()
 
-    plugin_dir = os.path.dirname(os.path.abspath(__file__))
+        plugin_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # -------------------------
-    # TEMP FOLDER
-    # -------------------------
-    temp_dir = os.path.join(plugin_dir, "temp")
-    if not os.path.exists(temp_dir):
-        os.makedirs(temp_dir)
+        # -------------------------
+        # TEMP FOLDER
+        # -------------------------
+        temp_dir = os.path.join(plugin_dir, "temp")
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
 
-    input_img = os.path.join(temp_dir, "input.png")
-    output_json = os.path.join(temp_dir, "output.json")
+        input_img = os.path.join(temp_dir, "input.png")
+        output_json = os.path.join(temp_dir, "output.json")
 
-    # -------------------------
-    # SAVE IMAGE FROM KRITA
-    # -------------------------
-    node.save(input_img, 0, 0, doc.width(), doc.height())
+        # -------------------------
+        # SAVE IMAGE FROM KRITA
+        # -------------------------
+        node.save(input_img, 0, 0, doc.width(), doc.height())
 
-    # -------------------------
-    # OPEN-CV ENGINE PATHS
-    # -------------------------
-    python_exe = os.path.join(plugin_dir, "python_env", "python.exe")
-    script = os.path.join(plugin_dir, "opencv_engine", "process.py")
+        # -------------------------
+        # OPEN-CV ENGINE PATHS
+        # -------------------------
+        python_exe = os.path.join(plugin_dir, "python_env", "python.exe")
+        script = os.path.join(plugin_dir, "opencv_engine", "process.py")
 
-    # -------------------------
-    # RUN ENGINE
-    # -------------------------
-    subprocess.run([
-        python_exe,
-        script,
-        input_img,
-        output_json
-    ])
+        # -------------------------
+        # RUN ENGINE
+        # -------------------------
+        subprocess.run([
+            python_exe,
+            script,
+            input_img,
+            output_json
+        ])
 
-    # -------------------------
-    # READ RESULTS
-    # -------------------------
-    if not os.path.exists(output_json):
-        print(" Engine failed")
-        return
+        # -------------------------
+        # READ RESULTS
+        # -------------------------
+        if not os.path.exists(output_json):
+            print(" Engine failed")
+            return
 
-    with open(output_json, "r") as f:
-        data = json.load(f)
+        with open(output_json, "r") as f:
+            data = json.load(f)
 
-    lines = data.get("lines", [])
-    vps = data.get("vanishing_points", [])
+        lines = data.get("lines", [])
+        vps = data.get("vanishing_points", [])
 
-    print("Lines:", len(lines))
-    print("Vanishing Points:", vps)
-    self.draw_grid(doc, vps)
-from PyQt5.QtGui import QPainterPath
+        print("Lines:", len(lines))
+        print("Vanishing Points:", vps)
+        self.draw_grid(doc, vps)
 
-def draw_grid(self, doc, vps):
-    root = doc.rootNode()
 
-    # Create vector layer
-    grid_layer = doc.createVectorLayer("G2G Grid")
-    root.addChildNode(grid_layer, None)
+    def draw_grid(self, doc, vps):
+        root = doc.rootNode()
 
-    width = doc.width()
-    height = doc.height()
+        # Create vector layer
+        grid_layer = doc.createVectorLayer("G2G Grid")
+        root.addChildNode(grid_layer, None)
 
-    spacing =  self.spacing_slider.value() # distance between grid rays
+        width = doc.width()
+        height = doc.height()
 
-    def draw_line(x1, y1, x2, y2):
-     thickness = self.thickness_slider.value()
+        spacing =  self.spacing_slider.value() # distance between grid rays
 
-    for i in range(thickness):  
-        path = QPainterPath()
-        path.moveTo(x1 + i, y1 + i)
-        path.lineTo(x2 + i, y2 + i)
-        grid_layer.addShape(path)
+        def draw_line(x1, y1, x2, y2):
+            thickness = self.thickness_slider.value()
+        
 
- 
-    mode = self.mode_combo.currentText()
+        for i in range(thickness):  
+            path = QPainterPath()
+            path.moveTo(x1 + i, y1 + i)
+            path.lineTo(x2 + i, y2 + i)
+            grid_layer.addShape(path)
 
-    if mode == "1-Point":
-        vps = vps[:1]
-    elif mode == "2-Point":
-        vps = vps[:2]
-    elif mode == "3-Point":
-        vps = vps[:3]
+    
+        mode = self.mode_combo.currentText()
 
-   
-    if len(vps) == 1:
-        vx, vy = vps[0]
+        if mode == "1-Point":
+            vps = vps[:1]
+        elif mode == "2-Point":
+            vps = vps[:2]
+        elif mode == "3-Point":
+            vps = vps[:3]
 
-        for x in range(0, width, spacing):
-            draw_line(x, 0, x, height)
+    
+        if len(vps) == 1:
+            vx, vy = vps[0]
 
-        for x in range(0, width, spacing):
-            draw_line(x, height, vx, vy)
+            for x in range(0, width, spacing):
+                draw_line(x, 0, x, height)
 
-    elif len(vps) == 2:
-        vp1 = vps[0]
-        vp2 = vps[1]
+            for x in range(0, width, spacing):
+                draw_line(x, height, vx, vy)
 
-        for x in range(0, width, spacing):
-            draw_line(x, height, vp1[0], vp1[1])
-            draw_line(x, height, vp2[0], vp2[1])
+        elif len(vps) == 2:
+            vp1 = vps[0]
+            vp2 = vps[1]
 
-    elif len(vps) >= 3:
-        vp1, vp2, vp3 = vps[:3]
+            for x in range(0, width, spacing):
+                draw_line(x, height, vp1[0], vp1[1])
+                draw_line(x, height, vp2[0], vp2[1])
 
-        for x in range(0, width, spacing):
-            draw_line(x, height, vp1[0], vp1[1])
-            draw_line(x, height, vp2[0], vp2[1])
+        elif len(vps) >= 3:
+            vp1, vp2, vp3 = vps[:3]
 
-        for y in range(0, height, spacing):
-            draw_line(0, y, vp3[0], vp3[1])
-            draw_line(width, y, vp3[0], vp3[1])
+            for x in range(0, width, spacing):
+                draw_line(x, height, vp1[0], vp1[1])
+                draw_line(x, height, vp2[0], vp2[1])
 
-    doc.refreshProjection()
+            for y in range(0, height, spacing):
+                draw_line(0, y, vp3[0], vp3[1])
+                draw_line(width, y, vp3[0], vp3[1])
+
+        doc.refreshProjection()
