@@ -1,7 +1,9 @@
-from krita import DockWidget
+from krita import DockWidget, InfoObject
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel, QSlider, QComboBox
 import os
-from PyQt5.QtCore import Qt
+import sys
+import shutil
+from PyQt5.QtCore import Qt, QRect
 import subprocess
 import json
 from PyQt5.QtGui import QPainterPath
@@ -11,6 +13,9 @@ from PyQt5.QtGui import QPainterPath
 
 
 class GestureToGrid(DockWidget):
+
+    def canvasChanged(self, canvas):#add
+        pass
 
     def __init__(self):
         super().__init__()
@@ -54,6 +59,9 @@ class GestureToGrid(DockWidget):
         self.mode_combo.addItems(["Auto", "1-Point", "2-Point", "3-Point"])
         layout.addWidget(self.mode_combo)
 
+        self.status_label = QLabel("Status: Ready")
+        layout.addWidget(self.status_label)
+
         # -------------------------
         # BUTTON
         # -------------------------
@@ -85,23 +93,93 @@ class GestureToGrid(DockWidget):
         # -------------------------
         # SAVE IMAGE FROM KRITA
         # -------------------------
-        node.save(input_img, 0, 0, doc.width(), doc.height())
+        info = InfoObject()
+        node.save(input_img, 72.0, 72.0, info, QRect(0, 0, doc.width(), doc.height()))
 
         # -------------------------
         # OPEN-CV ENGINE PATHS
         # -------------------------
-        python_exe = os.path.join(plugin_dir, "python_env", "python.exe")
+        python_env_dir = os.path.join(plugin_dir, "python_env")
+        python_exe = os.path.join(python_env_dir, "Scripts", "python.exe")
+        if not os.path.exists(python_exe):
+            python_exe = os.path.join(python_env_dir, "python.exe")
+        if not os.path.exists(python_exe):
+            self.status_label.setText("Error: Bundled python_env not found. Run setup.bat or setup.py.")
+            return
+
+        self.status_label.setText(f"Using bundled Python: {python_exe}")
+
         script = os.path.join(plugin_dir, "opencv_engine", "process.py")
 
-        # -------------------------
-        # RUN ENGINE
-        # -------------------------
-        subprocess.run([
-            python_exe,
-            script,
-            input_img,
-            output_json
-        ])
+        if not os.path.exists(script):
+            self.status_label.setText("Error: process.py not found in opencv_engine.")
+            return
+
+        if not python_exe or not os.path.exists(python_exe):
+            self.status_label.setText("Error: Python executable not found. Install python_env or add Python to PATH.")
+            return
+
+        self.status_label.setText(f"Testing Python: {python_exe}")
+
+        # Build a clean environment for the bundled Python subprocess
+        clean_env = os.environ.copy()
+        clean_env.pop("PYTHONPATH", None)
+        clean_env.pop("PYTHONHOME", None)
+        clean_env.pop("PYTHONSTARTUP", None)
+        clean_env["PYTHONNOUSERSITE"] = "1"
+
+        # Validate OpenCV availability in the selected Python interpreter
+        check_cmd = [python_exe, "-c", "import cv2"]
+        check = subprocess.run(check_cmd, env=clean_env, capture_output=True, text=True)
+        if check.returncode != 0:
+            self.status_label.setText("OpenCV not installed in environment. Installing now...")
+            print("OpenCV import stderr:", check.stderr)
+
+            install_cmd = [
+                python_exe,
+                "-m",
+                "pip",
+                "install",
+                "--upgrade",
+                "pip",
+                "setuptools",
+                "wheel",
+                "opencv-python",
+                "numpy"
+            ]
+            install = subprocess.run(install_cmd, env=clean_env, capture_output=True, text=True)
+            if install.returncode != 0:
+                error_msg = install.stderr.strip().splitlines()[0] if install.stderr else "Unknown install error"
+                self.status_label.setText(f"Install failed: {error_msg}")
+                print("OpenCV install stdout:", install.stdout)
+                print("OpenCV install stderr:", install.stderr)
+                return
+
+            check = subprocess.run(check_cmd, env=clean_env, capture_output=True, text=True)
+            if check.returncode != 0:
+                error_msg = check.stderr.strip().splitlines()[0] if check.stderr else "Unknown import error"
+                self.status_label.setText(f"OpenCV import failed after install: {error_msg}")
+                print("OpenCV import stderr after install:", check.stderr)
+                return
+
+        self.status_label.setText(f"Using Python: {python_exe}")
+
+        try:
+            result = subprocess.run([
+                python_exe,
+                script,
+                input_img,
+                output_json
+            ], capture_output=True, text=True)
+            if result.returncode != 0:
+                first_line = (result.stderr or result.stdout).splitlines()[0] if (result.stderr or result.stdout) else "Unknown error"
+                self.status_label.setText(f"OpenCV engine error: {first_line}")
+                print("OpenCV engine stderr:", result.stderr)
+                print("OpenCV engine stdout:", result.stdout)
+                return
+        except FileNotFoundError:
+            self.status_label.setText(f"Error: Python executable not found: {python_exe}")
+            return
 
         # -------------------------
         # READ RESULTS
@@ -136,12 +214,11 @@ class GestureToGrid(DockWidget):
         def draw_line(x1, y1, x2, y2):
             thickness = self.thickness_slider.value()
         
-
-        for i in range(thickness):  
-            path = QPainterPath()
-            path.moveTo(x1 + i, y1 + i)
-            path.lineTo(x2 + i, y2 + i)
-            grid_layer.addShape(path)
+            for i in range(thickness):  
+                path = QPainterPath()
+                path.moveTo(x1 + i, y1 + i)
+                path.lineTo(x2 + i, y2 + i)
+                grid_layer.addShape(path)
 
     
         mode = self.mode_combo.currentText()
